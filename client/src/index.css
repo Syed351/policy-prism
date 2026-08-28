@@ -1,0 +1,378 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-field text-ink font-sans text-[14px] leading-[1.55] antialiased;
+    margin: 0;
+  }
+  /* Headings are set in Spectral.
+   *
+   * Regulatory source material - the CFR, accreditation manuals, survey
+   * reports - is typeset in serif. Borrowing that voice for headings grounds
+   * the product in the documents its users actually work from, and separates
+   * "what this section is" from the sans-serif interface around it. */
+  h1, h2, h3, h4 {
+    @apply font-serif font-medium m-0 text-ink;
+    letter-spacing: -0.011em;
+  }
+  h1 { @apply text-[26px] leading-[1.2]; }
+  h2 { @apply text-[19px] leading-[1.25]; }
+  h3 { @apply text-[16px] leading-[1.3]; }
+
+  /* Figures line up in columns. Compliance work is comparison work, so every
+     numeral is tabular by default. */
+  table, .pp-stat-v {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Accessibility: a visible focus ring on every interactive element, with
+     enough offset to stay legible against dark sidebar surfaces too. */
+  :focus-visible {
+    outline: 2px solid #2e3f91;
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+  .bg-sidebar :focus-visible,
+  aside :focus-visible {
+    outline-color: #8FA8FF;
+  }
+
+  /* Respect a reduced-motion preference: the shimmer is decoration. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: #c3cfd3; border-radius: 6px; }
+}
+
+@layer components {
+  /* Screen-reader-only text: announces loading and status changes that are
+     otherwise conveyed visually. */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  /* ---- table rhythm -------------------------------------------------
+   * These tables are read line by line against a printed requirement list,
+   * so rows need vertical air and the rules between them should be quiet
+   * enough that the content, not the grid, carries the structure.      */
+  .pp-table th {
+    @apply bg-panel-2 font-medium text-ink-3;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    padding-top: 0.6rem;
+    padding-bottom: 0.6rem;
+  }
+  .pp-table td {
+    padding-top: 0.7rem;
+    padding-bottom: 0.7rem;
+  }
+  .pp-table tbody tr:hover {
+    @apply bg-panel-2;
+  }
+
+  /* ---- the citation ------------------------------------------------
+   * The regulatory citation is the anchor of this product: every finding,
+   * gap and report entry is addressed to one. It gets its own treatment -
+   * mono, tight, with a hairline rule beneath in the manner of a ruled
+   * reference - so the eye can find it in any dense layout.             */
+  .pp-cite {
+    @apply font-mono text-[12.5px] font-medium text-ink-2 whitespace-nowrap;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .pp-cite-lead {
+    @apply pp-cite inline-block border-b border-line pb-0.5 text-[13.5px] text-ink;
+  }
+
+  /* A framework tag reads as the volume a citation lives in, so it sits
+     tight to the citation rather than floating as a separate badge. */
+  .pp-fw {
+    @apply inline-flex items-center rounded-sm bg-panel-2 px-1.5 py-0.5
+           font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-ink-3;
+  }
+
+  /* ---- status badges ---------------------------------------------
+   * Every badge carries a shaped marker as well as a colour, so status
+   * survives greyscale printing and colour-blindness. Accessibility rule:
+   * status is never communicated by hue alone.                        */
+  .pp-badge {
+    @apply inline-flex items-center gap-1.5 rounded-pill border px-2 py-0.5
+           text-[11.5px] font-medium whitespace-nowrap;
+  }
+  .pp-badge::before {
+    content: '';
+    @apply inline-block h-1.5 w-1.5 rounded-pill bg-current opacity-80;
+  }
+  .pp-badge-cov  { @apply border-seal/30  bg-seal-bg  text-seal; }
+  .pp-badge-par  { @apply border-amber/30 bg-amber-bg text-amber; }
+  .pp-badge-gap  { @apply border-flag/30  bg-flag-bg  text-flag; }
+  .pp-badge-none { @apply border-line     bg-panel-2  text-ink-3; }
+  .pp-badge-ai   { @apply border-auto/30  bg-auto-bg  text-auto; }
+  /* Squared marker distinguishes "needs a person" from coverage states. */
+  .pp-badge-pend { @apply border-line bg-panel-2 text-ink-2; }
+  .pp-badge-pend::before { @apply rounded-none; }
+
+  /* ---- skeletons --------------------------------------------------
+   * Shown while data loads, so a screen never renders zeros that look
+   * like real answers.                                                */
+  .pp-skel {
+    @apply rounded bg-line-2;
+    background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+    background-size: 400px 100%;
+    background-repeat: no-repeat;
+    @apply animate-shimmer;
+  }
+  .pp-skel-line { @apply pp-skel h-3.5 w-full; }
+  .pp-skel-stat { @apply pp-skel h-8 w-24; }
+
+  /* ---- empty and error states ---- */
+  .pp-empty-state {
+    @apply flex flex-col items-center justify-center gap-2 px-6 py-14 text-center;
+  }
+  .pp-empty-state h4 { @apply text-[15px] font-medium text-ink; }
+  .pp-empty-state p { @apply max-w-[42ch] text-xs2 text-ink-3; }
+
+  /* ---- surfaces ---- */
+  .pp-panel {
+    @apply bg-panel border border-line rounded-panel overflow-hidden shadow-raise;
+  }
+  .pp-panel-head {
+    @apply flex items-center justify-between gap-3 flex-wrap px-4 py-3 border-b border-line-2 bg-panel;
+  }
+  .pp-panel-head h3 {
+    @apply font-serif text-[16px] font-medium;
+  }
+
+  /* Eyebrow above a section title: names the volume, not decoration. */
+  .pp-eyebrow {
+    @apply block font-mono text-[10.5px] font-medium uppercase tracking-[0.11em] text-ink-3;
+  }
+  .pp-pad {
+    @apply px-4 py-3.5;
+  }
+  .pp-sub {
+    @apply text-xs2 text-ink-3;
+  }
+  .pp-label {
+    @apply text-micro uppercase text-ink-3 font-medium;
+  }
+
+  /* ---- buttons ---- */
+  .pp-btn {
+    @apply inline-flex items-center justify-center gap-1.5 border border-line bg-panel text-ink
+           px-3 py-1.5 rounded text-[13px] font-medium transition-colors
+           hover:border-[#B6C4C9] hover:bg-panel-2 disabled:opacity-45 disabled:cursor-not-allowed;
+  }
+  .pp-btn-primary {
+    @apply bg-ink border-ink text-white hover:bg-[#1B303C] hover:border-[#1B303C];
+  }
+  .pp-btn-ok {
+    @apply bg-seal border-seal text-white hover:bg-[#155039] hover:border-[#155039];
+  }
+  .pp-btn-no {
+    @apply bg-flag border-flag text-white hover:bg-[#87301E] hover:border-[#87301E];
+  }
+  .pp-btn-sm {
+    @apply px-2 py-1 text-[12px];
+  }
+
+  /* ---- inputs ---- */
+  .pp-input,
+  .pp-select,
+  .pp-textarea {
+    @apply w-full bg-panel border border-line rounded px-2.5 py-1.5 text-[13px] text-ink
+           placeholder:text-ink-3 focus:border-ink focus:outline-none;
+  }
+  .pp-textarea {
+    @apply leading-relaxed resize-y;
+  }
+  .pp-field label {
+    @apply block text-[11px] uppercase tracking-[0.06em] text-ink-3 mb-1.5;
+  }
+
+  /* ---- pills ---- */
+  .pp-pill {
+    @apply inline-flex items-center rounded-full px-2 py-[1px] text-[11px] font-medium whitespace-nowrap;
+  }
+  .pp-pill-cov { @apply bg-seal-bg text-seal; }
+  .pp-pill-par { @apply bg-amber-bg text-amber; }
+  .pp-pill-gap { @apply bg-flag-bg text-flag; }
+  .pp-pill-fw  { @apply bg-[#E2E8EA] text-ink-2 font-mono text-[10.5px]; }
+  .pp-pill-pen { @apply bg-[#EEF1F2] text-ink-3; }
+  .pp-pill-app { @apply bg-seal-bg text-seal; }
+  .pp-pill-rej { @apply bg-flag-bg text-flag; }
+  .pp-pill-up  { @apply bg-auto-bg text-auto; }
+
+  /* ---- tables ---- */
+  .pp-table {
+    @apply w-full border-collapse;
+  }
+  .pp-table th {
+    @apply text-left text-micro uppercase text-ink-3 font-medium px-4 py-2.5
+           border-b border-line-2 bg-panel-2 whitespace-nowrap;
+  }
+  .pp-table td {
+    @apply px-4 py-2.5 border-b border-line-2 align-top text-[13px];
+  }
+  .pp-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+  .pp-row-click {
+    @apply hover:bg-panel-2 cursor-pointer;
+  }
+
+  /* ---- stats ---- */
+  .pp-stat {
+    @apply relative bg-panel border border-line rounded-panel px-4 py-3.5 shadow-raise
+           transition-colors;
+  }
+  /* A hairline at the top edge, tinted by tone, so a card's meaning is
+     legible before the number is read. */
+  .pp-stat::before {
+    content: '';
+    @apply absolute inset-x-0 top-0 h-[2px] rounded-t-panel bg-line;
+  }
+  .pp-stat-good::before { @apply bg-seal; }
+  .pp-stat-warn::before { @apply bg-amber; }
+  .pp-stat-bad::before  { @apply bg-flag; }
+  .pp-stat-k {
+    @apply font-mono text-[10.5px] font-medium uppercase text-ink-3;
+    letter-spacing: 0.11em;
+  }
+  .pp-stat-v {
+    @apply font-serif text-[34px] leading-[1.05] mt-1.5 font-medium text-ink;
+    letter-spacing: -0.022em;
+  }
+  .pp-stat-d { @apply text-[12px] text-ink-3 mt-1 leading-snug; }
+
+  /* ---- meters ---- */
+  .pp-meter {
+    @apply flex h-[7px] rounded overflow-hidden bg-line-2 mt-2;
+  }
+
+  /* ---- callouts ---- */
+  .pp-note {
+    @apply text-xs2 px-3 py-2.5 rounded border-l-2 border-amber bg-amber-bg text-[#6C470A];
+  }
+  .pp-note-bad {
+    @apply border-flag bg-flag-bg text-[#7C2B1B];
+  }
+  .pp-quote {
+    @apply bg-panel-2 border-l-2 border-line px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap rounded-r;
+  }
+  .pp-advice {
+    @apply bg-panel-2 border border-line-2 rounded px-3 py-2.5 mt-2 text-xs2;
+  }
+
+  /* ---- empty state ---- */
+  .pp-empty {
+    @apply px-5 py-11 text-center text-ink-3 text-[13.5px];
+  }
+  .pp-empty b {
+    @apply block text-ink font-semibold text-[15px] mb-1.5;
+  }
+}
+
+/* Coverage strip bars in the dashboard */
+.pp-strip-bar {
+  flex: 1;
+  border-radius: 1px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  min-width: 2px;
+}
+.pp-strip-bar:hover { opacity: 0.6; }
+
+mark {
+  background: #fbe9a7;
+  color: inherit;
+  padding: 0 1px;
+  border-radius: 2px;
+}
+
+/* ------------------------------------------------------------------ *
+ * Small screens
+ *
+ * The layout is dense by design - wide tables of citations and scores.
+ * Rather than hiding columns and losing information, panels scroll
+ * horizontally and the surrounding chrome tightens up.
+ * ------------------------------------------------------------------ */
+
+/* Any panel containing a table scrolls rather than stretching the page. */
+.pp-panel {
+  overflow-x: auto;
+}
+
+@media (max-width: 640px) {
+  body {
+    font-size: 13.5px;
+  }
+
+  /* Reclaim horizontal space from padding on narrow screens. */
+  .pp-pad,
+  .pp-panel-head {
+    padding-left: 0.875rem;
+    padding-right: 0.875rem;
+  }
+
+  .pp-table th,
+  .pp-table td {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  /* Drawers and modals take the full width - a 560px panel on a 390px
+     screen leaves a useless sliver of backdrop. */
+  aside[role='dialog'] {
+    width: 100vw !important;
+  }
+
+  [role='dialog'] {
+    max-height: 92vh;
+  }
+
+  /* Filter bars stack instead of overflowing. */
+  .pp-input[type='search'],
+  .pp-select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* Stat values shrink so five tiles do not force a scroll. */
+  .pp-stat-v {
+    font-size: 26px;
+  }
+}
+
+/* Tap targets on touch devices - 32px buttons are fiddly with a thumb. */
+@media (hover: none) and (pointer: coarse) {
+  .pp-btn {
+    min-height: 38px;
+  }
+
+  .pp-btn-sm {
+    min-height: 32px;
+  }
+}

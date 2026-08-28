@@ -1,0 +1,108 @@
+name: Deploy
+
+# Publishes the image and triggers a deployment, but only after CI has passed
+# on the same commit. The failure mode this prevents is the one that already
+# happened here: a build error pushed to main and deployed anyway, because the
+# push ran regardless of whether the build succeeded.
+
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [main]
+  # Manual trigger for redeploying without a code change.
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The gate. Without this, a red CI run would still deploy.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      # GitHub's own registry: no extra account, and the token is already here.
+      - name: Sign in to the container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=long
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Trigger deployment
+    runs-on: ubuntu-latest
+    needs: publish
+    timeout-minutes: 10
+
+    steps:
+      # Railway and Render both expose a deploy hook URL. Whichever is in use,
+      # store its URL as the RAILWAY_DEPLOY_HOOK secret.
+      #
+      # The step is skipped rather than failed when no hook is configured, so a
+      # fork or a fresh clone does not show a red pipeline for a missing secret
+      # it was never meant to have.
+      - name: Call the deploy hook
+        env:
+          HOOK: ${{ secrets.RAILWAY_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "No deploy hook configured — skipping."
+            echo "Add a RAILWAY_DEPLOY_HOOK repository secret to enable automatic deployment."
+            exit 0
+          fi
+
+          code=$(curl -s -o /tmp/out -w '%{http_code}' -X POST "$HOOK")
+          echo "Deploy hook responded $code"
+          cat /tmp/out || true
+
+          case "$code" in
+            2*) echo "Deployment triggered." ;;
+            *)  echo "::error::Deploy hook failed with status $code"; exit 1 ;;
+          esac
+
+      - name: Summary
+        run: |
+          echo "### Deployment triggered" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Commit: \`${{ github.event.workflow_run.head_sha || github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "Image: \`ghcr.io/${{ github.repository }}:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Database migrations are **not** run automatically. Apply new files in" >> $GITHUB_STEP_SUMMARY
+          echo "\`server/drizzle/\` with psql before or after deploying, as appropriate." >> $GITHUB_STEP_SUMMARY

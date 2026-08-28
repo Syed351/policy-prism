@@ -1,0 +1,14 @@
+# Railway/Nixpacks build settings. Node is pinned because the TypeScript config
+# uses the legacy module resolution, which newer Node releases bundle a
+# compiler that has removed.
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm install --include=dev"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "node server/dist/server.js"

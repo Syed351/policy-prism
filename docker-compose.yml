@@ -1,0 +1,57 @@
+# Local stack: the app plus its own Postgres.
+#
+# The point of this file is that a new developer can get a working environment
+# with one command and no hosted database. Production points at Neon instead —
+# see DEPLOY.md.
+#
+#   docker compose up --build
+#   docker compose exec app npm run db:seed --workspace server
+#
+# Then open http://localhost:4000
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: policyprism
+      POSTGRES_PASSWORD: localdev
+      POSTGRES_DB: policyprism
+    ports:
+      # Exposed so you can inspect it with psql or a GUI client.
+      - '5433:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Every migration runs in filename order on first boot, so a fresh
+      # volume comes up with the current schema rather than an empty database.
+      - ./server/drizzle:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U policyprism -d policyprism']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        # Wait for the database to accept connections, not merely to start.
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgres://policyprism:localdev@db:5432/policyprism
+      # Local only. Production must supply its own secret.
+      JWT_SECRET: local-development-secret-not-for-production-use-0000
+      SEED_PASSWORD: PolicyPrism!2026
+      LOG_LEVEL: combined
+    ports:
+      - '4000:4000'
+    volumes:
+      # Uploads survive a container rebuild.
+      - uploads:/app/server/uploads
+
+volumes:
+  pgdata:
+  uploads:

@@ -1,0 +1,40 @@
+# Everything here would either bloat the build context, break the build, or
+# leak secrets into an image layer.
+
+# Dependencies and build output are produced inside the image.
+node_modules
+**/node_modules
+dist
+**/dist
+
+# Secrets. An .env copied into a layer stays in the image history even if a
+# later layer deletes it.
+.env
+**/.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Version control and editor state.
+.git
+.gitignore
+.github
+.vscode
+.idea
+*.swp
+
+# Local artefacts.
+*.log
+npm-debug.log*
+.DS_Store
+**/.DS_Store
+coverage
+*.zip
+
+# Uploads are runtime state, not build input.
+server/uploads/*
+!server/uploads/.gitkeep
+
+# Platform configs not used by the Docker build.
+render.yaml
+nixpacks.toml

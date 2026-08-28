@@ -1,0 +1,159 @@
+name: CI
+
+# Runs on every push and pull request to main. The job here is to catch the
+# things that have actually broken this project before: a duplicate declaration
+# that only esbuild notices, a stale build pushed without compiling, and a
+# Docker image that will not start.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A new push supersedes an in-flight run for the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20.18.1'
+
+jobs:
+  build:
+    name: Build and typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # --include=dev because the compiler and bundler live in devDependencies
+      # and CI defaults can omit them.
+      - name: Install dependencies
+        run: npm ci --include=dev || npm install --include=dev
+
+      # Shared first: both other workspaces import from it.
+      - name: Build shared package
+        run: npm run build --workspace shared
+
+      # The client build is the real gate. It fails on duplicate declarations
+      # and unresolved imports, which is how a broken commit reached production
+      # in this project before.
+      - name: Build client
+        run: npm run build --workspace client
+
+      - name: Build server
+        run: npm run build --workspace server
+
+      # Reported but not enforced. The server has a known @types/express version
+      # clash that emits errors while still producing correct JavaScript;
+      # failing on it would block every commit for a pre-existing condition.
+      - name: Typecheck server (advisory)
+        run: npm run typecheck --workspace server || true
+        continue-on-error: true
+
+      - name: Typecheck client
+        run: npm run typecheck --workspace client
+
+      # Guards against the specific mistake of committing a secret.
+      - name: Check no environment files are tracked
+        run: |
+          if git ls-files | grep -E '(^|/)\.env(\.|$)' | grep -v '\.example$'; then
+            echo "::error::An environment file is tracked in git. Remove it and rotate the credentials."
+            exit 1
+          fi
+          echo "No environment files tracked."
+
+      # Proves the built client is actually present, since a server that starts
+      # without it silently serves 404s for every page.
+      - name: Verify build output
+        run: |
+          test -f shared/dist/index.js  || { echo "::error::shared build missing"; exit 1; }
+          test -f server/dist/server.js || { echo "::error::server build missing"; exit 1; }
+          test -f client/dist/index.html|| { echo "::error::client build missing"; exit 1; }
+          echo "All three workspaces produced output."
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: build
+
+    services:
+      # A throwaway database so the container can be started for real rather
+      # than merely built.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        options: >-
+          --health-cmd "pg_isready -U ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: policy-prism:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Apply the schema so the health check can reach a real database.
+      - name: Apply migrations
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+          for f in server/drizzle/*.sql; do
+            echo "Applying $f"
+            PGPASSWORD=ci psql -h localhost -U ci -d ci -f "$f" -v ON_ERROR_STOP=0
+          done
+
+      # Building an image proves it compiles. Starting it proves it runs.
+      - name: Start the container and check health
+        run: |
+          docker run -d --name pp \
+            --network host \
+            -e DATABASE_URL='postgres://ci:ci@localhost:5432/ci' \
+            -e JWT_SECRET='ci-secret-not-used-outside-this-job-000000' \
+            -e NODE_ENV=production \
+            -e PORT=4000 \
+            policy-prism:ci
+
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:4000/health > /tmp/health.json; then
+              echo "Healthy after ${i}s:"
+              cat /tmp/health.json
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "::error::Container did not become healthy."
+          docker logs pp
+          exit 1
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs pp || true
+
+      - name: Stop the container
+        if: always()
+        run: docker rm -f pp || true

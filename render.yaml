@@ -1,0 +1,46 @@
+# Single-service deployment: the API also serves the built React app, so there
+# is one URL, no CORS between front and back, and no VITE_API_URL to configure.
+#
+# The database is external (Neon), so nothing here provisions one - set
+# DATABASE_URL to your existing connection string.
+services:
+  - type: web
+    name: policy-prism
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: .
+    buildCommand: >-
+      npm install --include=dev --production=false &&
+      npm run build --workspace @policy-prism/shared &&
+      npm run build --workspace @policy-prism/client &&
+      npm run build --workspace @policy-prism/server
+    startCommand: node server/dist/server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20.18.1"
+      - key: NODE_ENV
+        value: production
+      # Serves client/dist from the same process.
+      - key: SERVE_CLIENT
+        value: "true"
+      - key: PORT
+        value: "4000"
+      - key: LOG_LEVEL
+        value: combined
+      # Set these in the Render dashboard - never commit them.
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      # Same origin as the app itself, since one service serves both.
+      - key: CLIENT_URL
+        sync: false
+      - key: APP_URL
+        sync: false
+      # Optional: email delivery for password resets.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
